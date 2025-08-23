@@ -1,0 +1,18 @@
+# Python virtual environment
+venv/
+venv-24aug/
+
+# Environment variables file
+.env
+
+# Python cache and compiled files
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS-specific files
+.DS_Store
+
+# React build and dependency cache
+build/
+node_modules/
