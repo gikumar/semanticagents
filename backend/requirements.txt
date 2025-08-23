@@ -1,0 +1,5 @@
+python-dotenv
+aiohttp
+fastapi[all]
+uvicorn
+semantic_kernel
