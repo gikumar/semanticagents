@@ -3,3 +3,5 @@ aiohttp
 fastapi[all]
 uvicorn
 semantic_kernel
+semantic-kernel[planners]
+databricks-sql-connector

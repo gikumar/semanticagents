@@ -1,13 +1,18 @@
 # backend/main.py
 
+import os
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
+
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-import os
 import sys
 import asyncio
-import logging
 import traceback
 
 # Add the path to your agent's directory
@@ -41,18 +46,23 @@ app.add_middleware(
 )
 
 # Initialize the agent once at startup
-try:
-    cfg = AgentConfig.from_env()
-    if not cfg.endpoint or not cfg.api_key:
-        raise RuntimeError(
-            "Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY in environment."
-        )
-    agent = AzureFoundryAgent(cfg)
-    logger.info("AzureFoundryAgent initialized successfully.")
-except RuntimeError as e:
-    logger.error(f"Agent initialization failed: {e}")
-    # Raise an exception to prevent the application from starting
-    raise HTTPException(status_code=500, detail=f"Failed to initialize AI agent: {str(e)}")
+agent = None
+
+@app.on_event("startup")
+async def startup_event():
+    global agent
+    try:
+        cfg = AgentConfig.from_env()
+        if not cfg.azure_endpoint or not cfg.azure_api_key:
+            raise RuntimeError(
+                "Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY in environment."
+            )
+        agent = AzureFoundryAgent(cfg)
+        logger.info("AzureFoundryAgent initialized successfully.")
+    except Exception as e:
+        logger.error(f"Agent initialization failed: {e}")
+        # Don't raise here as it would prevent the app from starting
+        logger.error("Application will continue but requests will fail")
 
 # Pydantic models for API request/response
 class AskRequest(BaseModel):
@@ -67,7 +77,14 @@ class AskResponse(BaseModel):
     
 @app.post("/ask", response_model=AskResponse)
 async def ask_agent(request: AskRequest):
-    logger.info(f"🚀Received /ask request with prompt: '{request.prompt[:50]}...'")
+    logger.info(f"🚀 Received /ask request with prompt: '{request.prompt[:50]}...'")
+    
+    if agent is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Agent not initialized"
+        )
+    
     try:
         if not request.prompt:
             logger.warning("Empty prompt received")
@@ -77,18 +94,16 @@ async def ask_agent(request: AskRequest):
             )
 
         # Call the orchestratoragent's run method directly
-        # Note: orchestratoragent.run does not use chat_history or file_content
-        # The goal for the agent is the user's prompt.
         out = await agent.run(goal=request.prompt)
 
         # Format the agent's structured output for the frontend
         formatted_response = {
-            "response": out["summary"],
-            "graph_data": None,  # Assuming no graph data is returned by this agent
-            "status": "success",
+            "response": out["result"],
+            "graph_data": None,
+            "status": out["status"],
         }
         
-        logger.info("🚀Request processed successfully")
+        logger.info("🚀 Request processed successfully")
         return formatted_response
 
     except Exception as e:
